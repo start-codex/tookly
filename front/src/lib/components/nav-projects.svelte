@@ -2,12 +2,22 @@
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import LayoutIcon from "@lucide/svelte/icons/layout";
 	import type { Project } from '$lib/api';
+	import * as m from '$lib/paraglide/messages';
+	import { i18n } from '$lib/i18n.svelte';
 
 	let { projects }: { projects: Project[] } = $props();
+
+	const t = $derived.by(() => {
+		i18n.locale;
+		return {
+			projects: m.nav_projects(),
+			noProjects: m.nav_no_projects()
+		};
+	});
 </script>
 
 <Sidebar.Group class="group-data-[collapsible=icon]:hidden">
-	<Sidebar.GroupLabel>Projects</Sidebar.GroupLabel>
+	<Sidebar.GroupLabel>{t.projects}</Sidebar.GroupLabel>
 	<Sidebar.Menu>
 		{#each projects as project (project.id)}
 			<Sidebar.MenuItem>
@@ -24,7 +34,7 @@
 		{/each}
 		{#if projects.length === 0}
 			<Sidebar.MenuItem>
-				<span class="px-2 py-1 text-xs text-muted-foreground">No projects</span>
+				<span class="px-2 py-1 text-xs text-muted-foreground">{t.noProjects}</span>
 			</Sidebar.MenuItem>
 		{/if}
 	</Sidebar.Menu>

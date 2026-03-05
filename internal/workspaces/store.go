@@ -14,8 +14,14 @@ const selectCols = `id, name, slug, created_at, updated_at, archived_at`
 const memberCols = `workspace_id, user_id, role, created_at, updated_at, archived_at`
 
 func createWorkspace(ctx context.Context, db *sqlx.DB, params CreateWorkspaceParams) (Workspace, error) {
+	tx, err := db.BeginTxx(ctx, nil)
+	if err != nil {
+		return Workspace{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
 	var workspace Workspace
-	err := db.QueryRowxContext(
+	err = tx.QueryRowxContext(
 		ctx,
 		`INSERT INTO workspaces (name, slug)
 		 VALUES ($1, $2)
@@ -28,6 +34,18 @@ func createWorkspace(ctx context.Context, db *sqlx.DB, params CreateWorkspacePar
 			return Workspace{}, ErrDuplicateSlug
 		}
 		return Workspace{}, fmt.Errorf("insert workspace: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`,
+		workspace.ID, params.OwnerID,
+	)
+	if err != nil {
+		return Workspace{}, fmt.Errorf("insert workspace owner: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Workspace{}, fmt.Errorf("commit tx: %w", err)
 	}
 	return workspace, nil
 }
@@ -129,7 +147,7 @@ func removeMember(ctx context.Context, db *sqlx.DB, workspaceID, userID string) 
 }
 
 func listMembers(ctx context.Context, db *sqlx.DB, workspaceID string) ([]WorkspaceMember, error) {
-	var members []WorkspaceMember
+	members := []WorkspaceMember{}
 	err := db.SelectContext(ctx, &members,
 		`SELECT `+memberCols+`
 		 FROM workspace_members

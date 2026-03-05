@@ -7,9 +7,21 @@
 	import BellIcon from "@lucide/svelte/icons/bell";
 	import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
 	import LogOutIcon from "@lucide/svelte/icons/log-out";
+	import SettingsIcon from "@lucide/svelte/icons/settings";
 	import { currentUser, logout } from '$lib/stores/auth';
+	import * as m from '$lib/paraglide/messages';
+	import { i18n } from '$lib/i18n.svelte';
 
 	const sidebar = useSidebar();
+
+	const t = $derived.by(() => {
+		i18n.locale;
+		return {
+			notifications: m.nav_notifications(),
+			logout: m.nav_logout(),
+			settings: m.settings_nav()
+		};
+	});
 
 	function initials(name: string): string {
 		return name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2);
@@ -63,13 +75,17 @@
 				<DropdownMenu.Group>
 					<DropdownMenu.Item>
 						<BellIcon />
-						Notifications
+						{t.notifications}
+					</DropdownMenu.Item>
+					<DropdownMenu.Item onSelect={() => goto('/settings')}>
+						<SettingsIcon />
+						{t.settings}
 					</DropdownMenu.Item>
 				</DropdownMenu.Group>
 				<DropdownMenu.Separator />
 				<DropdownMenu.Item onclick={handleLogout}>
 					<LogOutIcon />
-					Log out
+					{t.logout}
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>

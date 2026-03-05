@@ -35,7 +35,7 @@ func createStatus(ctx context.Context, db *sqlx.DB, params CreateStatusParams) (
 }
 
 func listStatuses(ctx context.Context, db *sqlx.DB, projectID string) ([]Status, error) {
-	var statuses []Status
+	statuses := []Status{}
 	if err := db.SelectContext(ctx, &statuses,
 		`SELECT `+statusCols+`
 		 FROM statuses

@@ -33,14 +33,15 @@ func fail(w http.ResponseWriter, err error) {
 func handleCreate(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Name string `json:"name"`
-			Slug string `json:"slug"`
+			Name    string `json:"name"`
+			Slug    string `json:"slug"`
+			OwnerID string `json:"owner_id"`
 		}
 		if err := respond.Decode(r, &body); err != nil {
 			respond.Error(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
-		params := CreateWorkspaceParams{Name: body.Name, Slug: body.Slug}
+		params := CreateWorkspaceParams{Name: body.Name, Slug: body.Slug, OwnerID: body.OwnerID}
 		if err := params.Validate(); err != nil {
 			respond.Error(w, http.StatusUnprocessableEntity, err.Error())
 			return

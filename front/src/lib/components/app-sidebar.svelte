@@ -7,7 +7,15 @@
 	import type { ComponentProps } from "svelte";
 	import { workspaces, projects } from '$lib/api';
 	import { currentUser } from '$lib/stores/auth';
-	import { selectWorkspace, getStoredWorkspaceId, selectedWorkspace, workspaceProjects } from '$lib/stores/workspace';
+	import {
+		selectWorkspace,
+		getStoredWorkspaceId,
+		workspaceProjects,
+		workspaceList,
+		markWorkspaceReady,
+		setWorkspaceList,
+		addToWorkspaceList
+	} from '$lib/stores/workspace';
 	import type { Workspace, Project } from '$lib/api';
 
 	let {
@@ -16,13 +24,14 @@
 		...restProps
 	}: ComponentProps<typeof Sidebar.Root> = $props();
 
-	let workspaceList = $state<Workspace[]>([]);
 	let activeWorkspace = $state<Workspace | null>(null);
-	let projectList = $state<Project[]>([]);
+	let projectList     = $state<Project[]>([]);
+
+	$effect(() => { projectList = $workspaceProjects; });
 
 	async function loadProjects(workspace: Workspace): Promise<Project[]> {
 		try {
-			return await projects.list(workspace.id);
+			return (await projects.list(workspace.id)) ?? [];
 		} catch {
 			return [];
 		}
@@ -32,33 +41,50 @@
 		const projs = await loadProjects(workspace);
 		selectWorkspace(workspace, projs);
 		activeWorkspace = workspace;
-		projectList = projs;
+	}
+
+	function handleWorkspaceCreate(workspace: Workspace): void {
+		addToWorkspaceList(workspace);
 	}
 
 	onMount(async () => {
 		const user = $currentUser;
-		if (!user) return;
-
-		try {
-			workspaceList = await workspaces.listByUser(user.id);
-		} catch {
-			workspaceList = [];
+		if (!user) {
+			markWorkspaceReady();
+			return;
 		}
 
-		if (workspaceList.length === 0) return;
+		let list: Workspace[] = [];
+		try {
+			list = await workspaces.listByUser(user.id);
+		} catch {
+			list = [];
+		}
+
+		setWorkspaceList(list);
+
+		if (list.length === 0) {
+			markWorkspaceReady();
+			return;
+		}
 
 		const storedId = getStoredWorkspaceId();
-		const initial = workspaceList.find(w => w.id === storedId) ?? workspaceList[0];
-		await handleWorkspaceSelect(initial);
+		const initial = list.find(w => w.id === storedId) ?? list[0];
+		try {
+			await handleWorkspaceSelect(initial);
+		} catch {
+			markWorkspaceReady();
+		}
 	});
 </script>
 
 <Sidebar.Root {collapsible} {...restProps}>
 	<Sidebar.Header>
 		<TeamSwitcher
-			workspaces={workspaceList}
+			workspaces={$workspaceList}
 			selected={activeWorkspace}
 			onSelect={handleWorkspaceSelect}
+			onCreate={handleWorkspaceCreate}
 		/>
 	</Sidebar.Header>
 	<Sidebar.Content>

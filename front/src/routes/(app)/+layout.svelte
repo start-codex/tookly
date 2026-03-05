@@ -3,8 +3,32 @@
 	import * as Breadcrumb from "$lib/components/ui/breadcrumb/index.js";
 	import { Separator } from "$lib/components/ui/separator/index.js";
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+	import { page } from '$app/state';
+	import * as m from '$lib/paraglide/messages';
+	import { i18n } from '$lib/i18n.svelte';
 
 	let { children } = $props();
+
+	type RawCrumb = { label?: string; labelKey?: keyof typeof m; href?: string };
+	type Crumb = { label: string; href?: string };
+
+	function resolveCrumbs(raw: RawCrumb[]): Crumb[] {
+		return raw.map(c => ({
+			label: c.labelKey ? String((m[c.labelKey] as () => string)()) : (c.label ?? ''),
+			href: c.href
+		}));
+	}
+
+	const defaultCrumb = $derived.by<Crumb[]>(() => {
+		i18n.locale;
+		return [{ label: String(m.nav_dashboard()) }];
+	});
+
+	const crumbs = $derived.by<Crumb[]>(() => {
+		i18n.locale;
+		const raw = page.data.breadcrumb as RawCrumb[] | undefined;
+		return raw ? resolveCrumbs(raw) : defaultCrumb;
+	});
 </script>
 
 <Sidebar.Provider>
@@ -22,9 +46,18 @@
 							<Breadcrumb.Link href="/">Taskcore</Breadcrumb.Link>
 						</Breadcrumb.Item>
 						<Breadcrumb.Separator class="hidden md:block" />
-						<Breadcrumb.Item>
-							<Breadcrumb.Page>Dashboard</Breadcrumb.Page>
-						</Breadcrumb.Item>
+						{#each crumbs as crumb, i}
+							{#if i > 0}
+								<Breadcrumb.Separator />
+							{/if}
+							<Breadcrumb.Item>
+								{#if crumb.href && i < crumbs.length - 1}
+									<Breadcrumb.Link href={crumb.href}>{crumb.label}</Breadcrumb.Link>
+								{:else}
+									<Breadcrumb.Page>{crumb.label}</Breadcrumb.Page>
+								{/if}
+							</Breadcrumb.Item>
+						{/each}
 					</Breadcrumb.List>
 				</Breadcrumb.Root>
 			</div>
