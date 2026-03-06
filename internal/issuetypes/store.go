@@ -29,7 +29,7 @@ func createIssueType(ctx context.Context, db *sqlx.DB, params CreateIssueTypePar
 }
 
 func listIssueTypes(ctx context.Context, db *sqlx.DB, projectID string) ([]IssueType, error) {
-	var issueTypes []IssueType
+	issueTypes := []IssueType{}
 	if err := db.SelectContext(ctx, &issueTypes,
 		`SELECT `+issueTypeCols+`
 		 FROM issue_types

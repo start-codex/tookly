@@ -54,7 +54,7 @@ func getBoard(ctx context.Context, db *sqlx.DB, id string) (Board, error) {
 }
 
 func listBoards(ctx context.Context, db *sqlx.DB, projectID string) ([]Board, error) {
-	var boards []Board
+	boards := []Board{}
 	err := db.SelectContext(
 		ctx,
 		&boards,
@@ -118,7 +118,7 @@ func addColumn(ctx context.Context, db *sqlx.DB, params AddColumnParams) (BoardC
 }
 
 func listColumns(ctx context.Context, db *sqlx.DB, boardID string) ([]BoardColumn, error) {
-	var columns []BoardColumn
+	columns := []BoardColumn{}
 	err := db.SelectContext(
 		ctx,
 		&columns,

@@ -29,8 +29,9 @@ type Workspace struct {
 }
 
 type CreateWorkspaceParams struct {
-	Name string
-	Slug string
+	Name    string
+	Slug    string
+	OwnerID string
 }
 
 func (params CreateWorkspaceParams) Validate() error {
@@ -39,6 +40,9 @@ func (params CreateWorkspaceParams) Validate() error {
 	}
 	if !reSlug.MatchString(params.Slug) {
 		return errors.New("slug must be 2-50 lowercase alphanumeric characters or hyphens, starting with a letter or digit")
+	}
+	if params.OwnerID == "" {
+		return errors.New("owner_id is required")
 	}
 	return nil
 }

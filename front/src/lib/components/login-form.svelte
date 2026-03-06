@@ -13,6 +13,8 @@
 	import type { HTMLAttributes } from 'svelte/elements';
 	import { auth } from '$lib/api';
 	import { login } from '$lib/stores/auth';
+	import * as m from '$lib/paraglide/messages';
+	import { i18n } from '$lib/i18n.svelte';
 
 	let { class: className, ...restProps }: HTMLAttributes<HTMLDivElement> = $props();
 
@@ -23,6 +25,20 @@
 	let errorMessage = $state('');
 	let loading = $state(false);
 
+	const t = $derived.by(() => {
+		i18n.locale;
+		return {
+			welcomeBack: m.login_welcome_back(),
+			signIn: m.login_sign_in(),
+			email: m.login_email(),
+			password: m.login_password(),
+			submit: m.login_submit(),
+			signingIn: m.login_signing_in(),
+			noAccount: m.login_no_account(),
+			terms: m.login_terms()
+		};
+	});
+
 	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
 		errorMessage = '';
@@ -32,7 +48,7 @@
 			login(user);
 			goto('/');
 		} catch (err) {
-			errorMessage = err instanceof Error ? err.message : 'Login failed';
+			errorMessage = err instanceof Error ? err.message : t.submit;
 		} finally {
 			loading = false;
 		}
@@ -42,14 +58,14 @@
 <div class={cn('flex flex-col gap-6', className)} {...restProps}>
 	<Card.Root>
 		<Card.Header class="text-center">
-			<Card.Title class="text-xl">Welcome back</Card.Title>
-			<Card.Description>Sign in to your account</Card.Description>
+			<Card.Title class="text-xl">{t.welcomeBack}</Card.Title>
+			<Card.Description>{t.signIn}</Card.Description>
 		</Card.Header>
 		<Card.Content>
 			<form onsubmit={handleSubmit}>
 				<FieldGroup>
 					<Field>
-						<FieldLabel for="email-{id}">Email</FieldLabel>
+						<FieldLabel for="email-{id}">{t.email}</FieldLabel>
 						<Input
 							id="email-{id}"
 							type="email"
@@ -60,7 +76,7 @@
 					</Field>
 					<Field>
 						<div class="flex items-center">
-							<FieldLabel for="password-{id}">Password</FieldLabel>
+							<FieldLabel for="password-{id}">{t.password}</FieldLabel>
 						</div>
 						<Input id="password-{id}" type="password" required bind:value={password} />
 					</Field>
@@ -69,18 +85,13 @@
 					{/if}
 					<Field>
 						<Button type="submit" disabled={loading}>
-							{loading ? 'Signing in…' : 'Login'}
+							{loading ? t.signingIn : t.submit}
 						</Button>
-						<FieldDescription class="text-center">
-							Don't have an account? Contact your administrator.
-						</FieldDescription>
+						<FieldDescription class="text-center">{t.noAccount}</FieldDescription>
 					</Field>
 				</FieldGroup>
 			</form>
 		</Card.Content>
 	</Card.Root>
-	<FieldDescription class="px-6 text-center">
-		By clicking continue, you agree to our <a href="##">Terms of Service</a>
-		and <a href="##">Privacy Policy</a>.
-	</FieldDescription>
+	<FieldDescription class="px-6 text-center">{t.terms}</FieldDescription>
 </div>

@@ -54,7 +54,7 @@ func getProject(ctx context.Context, db *sqlx.DB, id string) (Project, error) {
 }
 
 func listProjects(ctx context.Context, db *sqlx.DB, workspaceID string) ([]Project, error) {
-	var projects []Project
+	projects := []Project{}
 	err := db.SelectContext(
 		ctx,
 		&projects,
@@ -130,7 +130,7 @@ func removeMember(ctx context.Context, db *sqlx.DB, projectID, userID string) er
 }
 
 func listMembers(ctx context.Context, db *sqlx.DB, projectID string) ([]ProjectMember, error) {
-	var members []ProjectMember
+	members := []ProjectMember{}
 	err := db.SelectContext(ctx, &members,
 		`SELECT `+memberCols+`
 		 FROM project_members

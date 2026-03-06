@@ -105,7 +105,7 @@ func listIssues(ctx context.Context, db *sqlx.DB, params ListIssuesParams) ([]Is
 
 	query += ` ORDER BY status_id, status_position ASC`
 
-	var issues []Issue
+	issues := []Issue{}
 	if err := db.SelectContext(ctx, &issues, query, args...); err != nil {
 		return nil, fmt.Errorf("list issues: %w", err)
 	}

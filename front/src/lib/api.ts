@@ -43,7 +43,7 @@ export const users = {
 
 // --- Workspaces ---
 export const workspaces = {
-	create: (body: { name: string; slug: string }) => post<Workspace>('/workspaces', body),
+	create: (body: { name: string; slug: string; owner_id: string }) => post<Workspace>('/workspaces', body),
 	get: (workspaceID: string) => get<Workspace>(`/workspaces/${workspaceID}`),
 	archive: (workspaceID: string) => del(`/workspaces/${workspaceID}`),
 	listByUser: (userID: string) => get<Workspace[]>(`/workspaces?user_id=${userID}`),
