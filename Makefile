@@ -26,8 +26,18 @@ db-shell: ## Open psql shell
 	docker exec -it taskcore-db psql -U taskcore -d taskcore
 
 db-reset: db-down ## Reset database (destroy all data)
-	docker volume rm taskcore_taskcore-data 2>/dev/null || true
+	rm -rf .docker/postgres
 	$(MAKE) db-up
+
+db-clean: ## Remove database data folder only
+	rm -rf .docker/postgres
+
+db-backup: ## Backup database folder
+	mkdir -p backups
+	tar -czf backups/db-backup-$$(date +%Y%m%d-%H%M%S).tar.gz .docker/postgres
+
+db-size: ## Show database folder size
+	du -sh .docker/postgres 2>/dev/null || echo "Database folder does not exist yet"
 
 # =============================================================================
 # Migrations
@@ -59,7 +69,7 @@ dev-setup: db-up ## Start database (app runs migrations on startup)
 	@echo "Database ready. Run the app to apply migrations."
 
 dev-reset: db-reset ## Reset database (app will re-apply migrations on next start)
-	@echo "Database reset complete."
+	@echo "✅ Database reset complete. Folder .docker/postgres removed."
 
 # =============================================================================
 # App (Docker)

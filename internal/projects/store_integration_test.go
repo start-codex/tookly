@@ -3,20 +3,16 @@ package projects
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/start-codex/taskcode/internal/testpg"
 )
 
-var testDSN = os.Getenv("MINI_JIRA_TEST_DSN")
-
 func TestCreateProject(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -91,8 +87,8 @@ func TestCreateProject(t *testing.T) {
 }
 
 func TestGetProject(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -151,8 +147,8 @@ func TestGetProject(t *testing.T) {
 }
 
 func TestListProjects(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -227,8 +223,8 @@ func TestListProjects(t *testing.T) {
 }
 
 func TestArchiveProject(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -290,74 +286,9 @@ func TestArchiveProject(t *testing.T) {
 	}
 }
 
-func openTestDB(t *testing.T) *sqlx.DB {
-	t.Helper()
-	if testDSN == "" {
-		t.Skip("MINI_JIRA_TEST_DSN is not set; skipping PostgreSQL integration test")
-	}
-	db, err := sqlx.Connect("postgres", testDSN)
-	if err != nil {
-		t.Fatalf("connect test db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
-}
-
-func ensureSchema(t *testing.T, db *sqlx.DB) {
-	t.Helper()
-
-	requiredTables := []string{"workspaces", "app_users", "projects", "statuses", "issues"}
-
-	existing := 0
-	for _, table := range requiredTables {
-		var exists *string
-		if err := db.Get(&exists, `SELECT to_regclass('public.`+table+`')::text`); err != nil {
-			t.Fatalf("check table %s exists: %v", table, err)
-		}
-		if exists != nil && *exists != "" {
-			existing++
-		}
-	}
-
-	if existing == len(requiredTables) {
-		return
-	}
-	if existing > 0 {
-		t.Fatalf("partial schema detected: found %d/%d required tables", existing, len(requiredTables))
-	}
-
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-	sqlBytes, err := os.ReadFile(filepath.Join(root, "migrations", "0001_init.up.sql"))
-	if err != nil {
-		t.Fatalf("read migration: %v", err)
-	}
-	if _, err := db.Exec(string(sqlBytes)); err != nil {
-		t.Fatalf("apply migration: %v", err)
-	}
-}
-
-func seedUser(t *testing.T, db *sqlx.DB) string {
-	t.Helper()
-	var id string
-	if err := db.GetContext(context.Background(), &id,
-		`INSERT INTO app_users (email, name, password_hash)
-		 VALUES (gen_random_uuid()::text || '@test.local', 'Test', '') RETURNING id`,
-	); err != nil {
-		t.Fatalf("seed user: %v", err)
-	}
-	t.Cleanup(func() {
-		db.ExecContext(context.Background(), `DELETE FROM app_users WHERE id = $1`, id)
-	})
-	return id
-}
-
 func TestProjectMembers(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -367,7 +298,7 @@ func TestProjectMembers(t *testing.T) {
 			name: "add and list member",
 			arrange: func(t *testing.T, db *sqlx.DB) func(*testing.T) {
 				proj := seedProject(t, db)
-				uID := seedUser(t, db)
+				uID := testpg.SeedUser(t, db)
 				if _, err := AddMember(context.Background(), db, AddMemberParams{ProjectID: proj, UserID: uID, Role: "member"}); err != nil {
 					t.Fatalf("add: %v", err)
 				}
@@ -386,7 +317,7 @@ func TestProjectMembers(t *testing.T) {
 			name: "update project member role",
 			arrange: func(t *testing.T, db *sqlx.DB) func(*testing.T) {
 				proj := seedProject(t, db)
-				uID := seedUser(t, db)
+				uID := testpg.SeedUser(t, db)
 				if _, err := AddMember(context.Background(), db, AddMemberParams{ProjectID: proj, UserID: uID, Role: "viewer"}); err != nil {
 					t.Fatalf("add: %v", err)
 				}
@@ -405,7 +336,7 @@ func TestProjectMembers(t *testing.T) {
 			name: "remove and re-add project member",
 			arrange: func(t *testing.T, db *sqlx.DB) func(*testing.T) {
 				proj := seedProject(t, db)
-				uID := seedUser(t, db)
+				uID := testpg.SeedUser(t, db)
 				if _, err := AddMember(context.Background(), db, AddMemberParams{ProjectID: proj, UserID: uID, Role: "viewer"}); err != nil {
 					t.Fatalf("add: %v", err)
 				}
@@ -438,32 +369,15 @@ func TestProjectMembers(t *testing.T) {
 	}
 }
 
+// --- helpers ---
+
 func seedWorkspace(t *testing.T, db *sqlx.DB) string {
 	t.Helper()
-	var id string
-	if err := db.GetContext(context.Background(), &id,
-		`INSERT INTO workspaces (name, slug) VALUES ('ws', gen_random_uuid()::text) RETURNING id`,
-	); err != nil {
-		t.Fatalf("seed workspace: %v", err)
-	}
-	t.Cleanup(func() {
-		if _, err := db.ExecContext(context.Background(), `DELETE FROM workspaces WHERE id = $1`, id); err != nil {
-			t.Fatalf("cleanup workspace: %v", err)
-		}
-	})
-	return id
+	return testpg.SeedWorkspace(t, db)
 }
 
 func seedProject(t *testing.T, db *sqlx.DB) string {
 	t.Helper()
-	ws := seedWorkspace(t, db)
-	var id string
-	if err := db.GetContext(context.Background(), &id,
-		`INSERT INTO projects (workspace_id, name, key, description)
-		 VALUES ($1, 'Project', upper(substr(replace(gen_random_uuid()::text,'-',''),1,3)), '') RETURNING id`,
-		ws,
-	); err != nil {
-		t.Fatalf("seed project: %v", err)
-	}
-	return id
+	ws := testpg.SeedWorkspace(t, db)
+	return testpg.SeedProject(t, db, ws, "PRJ")
 }

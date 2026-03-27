@@ -13,17 +13,17 @@ func TestCreateWorkspaceParams_Validate(t *testing.T) {
 	}{
 		{
 			name:    "valid",
-			params:  CreateWorkspaceParams{Name: "Acme Corp", Slug: "acme-corp"},
+			params:  CreateWorkspaceParams{Name: "Acme Corp", Slug: "acme-corp", OwnerID: "user-1"},
 			wantErr: false,
 		},
 		{
 			name:    "slug exactly 2 chars",
-			params:  CreateWorkspaceParams{Name: "AB", Slug: "ab"},
+			params:  CreateWorkspaceParams{Name: "AB", Slug: "ab", OwnerID: "user-1"},
 			wantErr: false,
 		},
 		{
 			name:    "slug with digits",
-			params:  CreateWorkspaceParams{Name: "Team 42", Slug: "team42"},
+			params:  CreateWorkspaceParams{Name: "Team 42", Slug: "team42", OwnerID: "user-1"},
 			wantErr: false,
 		},
 		{

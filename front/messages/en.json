@@ -30,6 +30,13 @@
   "project_create": "Create project",
   "project_key": "Key",
   "project_key_hint": "Short uppercase identifier (e.g. PROJ)",
+  "project_template": "Template",
+  "project_template_kanban": "Kanban",
+  "project_template_kanban_desc": "Continuous flow. Columns: To Do, In Progress, Done.",
+  "project_template_scrum": "Scrum",
+  "project_template_scrum_desc": "Sprint-based. Columns: Backlog, To Do, In Progress, In Review, Done.",
+  "project_next": "Next",
+  "project_back": "Back",
 
   "project_no_boards_title": "No boards yet",
   "project_no_boards_desc": "Create a board to start organizing your work in {name}.",

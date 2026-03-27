@@ -4,20 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/start-codex/taskcode/internal/testpg"
 )
 
-var testDSN = os.Getenv("MINI_JIRA_TEST_DSN")
-
 func TestCreateUser(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -67,8 +63,8 @@ func TestCreateUser(t *testing.T) {
 }
 
 func TestGetUser(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -109,8 +105,8 @@ func TestGetUser(t *testing.T) {
 }
 
 func TestGetUserByEmail(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -151,8 +147,8 @@ func TestGetUserByEmail(t *testing.T) {
 }
 
 func TestArchiveUser(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -198,60 +194,9 @@ func TestArchiveUser(t *testing.T) {
 
 // --- helpers ---
 
-func openTestDB(t *testing.T) *sqlx.DB {
-	t.Helper()
-	if testDSN == "" {
-		t.Skip("MINI_JIRA_TEST_DSN is not set; skipping PostgreSQL integration test")
-	}
-	db, err := sqlx.Connect("postgres", testDSN)
-	if err != nil {
-		t.Fatalf("connect test db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
-}
-
-func ensureSchema(t *testing.T, db *sqlx.DB) {
-	t.Helper()
-	requiredTables := []string{"workspaces", "app_users", "projects", "statuses", "issues"}
-	existing := 0
-	for _, table := range requiredTables {
-		var exists *string
-		if err := db.Get(&exists, `SELECT to_regclass('public.`+table+`')::text`); err != nil {
-			t.Fatalf("check table %s: %v", table, err)
-		}
-		if exists != nil && *exists != "" {
-			existing++
-		}
-	}
-	if existing == len(requiredTables) {
-		return
-	}
-	if existing > 0 {
-		t.Fatalf("partial schema: found %d/%d tables", existing, len(requiredTables))
-	}
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-	sqlBytes, err := os.ReadFile(filepath.Join(root, "migrations", "0001_init.up.sql"))
-	if err != nil {
-		t.Fatalf("read migration: %v", err)
-	}
-	if _, err := db.Exec(string(sqlBytes)); err != nil {
-		t.Fatalf("apply migration: %v", err)
-	}
-}
-
 func uniqueEmail(t *testing.T, db *sqlx.DB) string {
 	t.Helper()
-	var suffix string
-	if err := db.GetContext(context.Background(), &suffix,
-		`SELECT substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)`,
-	); err != nil {
-		t.Fatalf("generate unique email: %v", err)
-	}
+	suffix := testpg.UniqueSuffix(t, db)
 	return fmt.Sprintf("user-%s@test.local", suffix)
 }
 

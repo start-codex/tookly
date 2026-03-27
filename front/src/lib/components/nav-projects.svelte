@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import LayoutIcon from "@lucide/svelte/icons/layout";
 	import type { Project } from '$lib/api';
@@ -23,7 +24,7 @@
 			<Sidebar.MenuItem>
 				<Sidebar.MenuButton>
 					{#snippet child({ props })}
-						<a href={`/projects/${project.id}`} {...props}>
+						<a href={`/${page.params.workspace}/projects/${project.id}`} {...props}>
 							<LayoutIcon />
 							<span>{project.name}</span>
 							<span class="ml-auto text-xs text-muted-foreground">{project.key}</span>

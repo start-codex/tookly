@@ -2,11 +2,10 @@ package issuetypes
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
+	"github.com/start-codex/taskcode/internal/pgutil"
 )
 
 const issueTypeCols = `id, project_id, name, icon, level, created_at, updated_at, archived_at`
@@ -20,7 +19,7 @@ func createIssueType(ctx context.Context, db *sqlx.DB, params CreateIssueTypePar
 		params.ProjectID, params.Name, params.Icon, params.Level,
 	).StructScan(&issueType)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if pgutil.IsUniqueViolation(err) {
 			return IssueType{}, ErrDuplicateIssueType
 		}
 		return IssueType{}, fmt.Errorf("create issue type: %w", err)
@@ -65,7 +64,3 @@ func archiveIssueType(ctx context.Context, db *sqlx.DB, projectID, issueTypeID s
 	return nil
 }
 
-func isUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	return errors.As(err, &pqErr) && pqErr.Code == "23505"
-}

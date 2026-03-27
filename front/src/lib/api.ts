@@ -60,7 +60,7 @@ export const workspaces = {
 
 // --- Projects ---
 export const projects = {
-	create: (workspaceID: string, body: { name: string; key: string; description?: string }) =>
+	create: (workspaceID: string, body: { name: string; key: string; description?: string; template?: string; locale?: string }) =>
 		post<Project>(`/workspaces/${workspaceID}/projects`, body),
 	list: (workspaceID: string) => get<Project[]>(`/workspaces/${workspaceID}/projects`),
 	get: (projectID: string) => get<Project>(`/projects/${projectID}`),

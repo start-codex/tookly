@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
+	"github.com/start-codex/taskcode/internal/pgutil"
 )
 
 const boardCols = `id, project_id, name, type, filter_query, created_at, updated_at, archived_at`
@@ -26,7 +26,7 @@ func createBoard(ctx context.Context, db *sqlx.DB, params CreateBoardParams) (Bo
 		params.FilterQuery,
 	).StructScan(&board)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if pgutil.IsUniqueViolation(err) {
 			return Board{}, ErrDuplicateBoardName
 		}
 		return Board{}, fmt.Errorf("insert board: %w", err)
@@ -109,7 +109,7 @@ func addColumn(ctx context.Context, db *sqlx.DB, params AddColumnParams) (BoardC
 		params.Name,
 	).StructScan(&column)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if pgutil.IsUniqueViolation(err) {
 			return BoardColumn{}, ErrDuplicateColumnName
 		}
 		return BoardColumn{}, fmt.Errorf("insert board column: %w", err)
@@ -187,7 +187,3 @@ func unassignStatus(ctx context.Context, db *sqlx.DB, boardColumnID, statusID st
 	return nil
 }
 
-func isUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	return errors.As(err, &pqErr) && pqErr.Code == "23505"
-}

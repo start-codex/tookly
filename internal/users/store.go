@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
+	"github.com/start-codex/taskcode/internal/pgutil"
 )
 
 const userCols = `id, email, name, created_at, updated_at, archived_at`
@@ -25,7 +25,7 @@ func createUser(ctx context.Context, db *sqlx.DB, params CreateUserParams) (User
 		params.Email, params.Name, hash,
 	).StructScan(&user)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if pgutil.IsUniqueViolation(err) {
 			return User{}, ErrDuplicateEmail
 		}
 		return User{}, fmt.Errorf("insert user: %w", err)
@@ -106,7 +106,3 @@ func archiveUser(ctx context.Context, db *sqlx.DB, id string) error {
 	return nil
 }
 
-func isUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	return errors.As(err, &pqErr) && pqErr.Code == "23505"
-}

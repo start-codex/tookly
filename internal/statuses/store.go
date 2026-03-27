@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
+	"github.com/start-codex/taskcode/internal/pgutil"
 )
 
 const statusCols = `id, project_id, name, category, position, created_at, updated_at, archived_at`
@@ -26,7 +26,7 @@ func createStatus(ctx context.Context, db *sqlx.DB, params CreateStatusParams) (
 		params.ProjectID, params.Name, params.Category,
 	).StructScan(&status)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if pgutil.IsUniqueViolation(err) {
 			return Status{}, ErrDuplicateStatus
 		}
 		return Status{}, fmt.Errorf("create status: %w", err)
@@ -65,7 +65,7 @@ func updateStatus(ctx context.Context, db *sqlx.DB, params UpdateStatusParams) (
 		if errors.Is(err, sql.ErrNoRows) {
 			return Status{}, ErrStatusNotFound
 		}
-		if isUniqueViolation(err) {
+		if pgutil.IsUniqueViolation(err) {
 			return Status{}, ErrDuplicateStatus
 		}
 		return Status{}, fmt.Errorf("update status: %w", err)
@@ -95,7 +95,3 @@ func archiveStatus(ctx context.Context, db *sqlx.DB, projectID, statusID string)
 	return nil
 }
 
-func isUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	return errors.As(err, &pqErr) && pqErr.Code == "23505"
-}

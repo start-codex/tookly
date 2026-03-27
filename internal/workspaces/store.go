@@ -7,45 +7,38 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
+	"github.com/start-codex/taskcode/internal/pgutil"
 )
 
 const selectCols = `id, name, slug, created_at, updated_at, archived_at`
 const memberCols = `workspace_id, user_id, role, created_at, updated_at, archived_at`
 
 func createWorkspace(ctx context.Context, db *sqlx.DB, params CreateWorkspaceParams) (Workspace, error) {
-	tx, err := db.BeginTxx(ctx, nil)
-	if err != nil {
-		return Workspace{}, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
 	var workspace Workspace
-	err = tx.QueryRowxContext(
-		ctx,
-		`INSERT INTO workspaces (name, slug)
-		 VALUES ($1, $2)
-		 RETURNING `+selectCols,
-		params.Name,
-		params.Slug,
-	).StructScan(&workspace)
-	if err != nil {
-		if isUniqueViolation(err) {
-			return Workspace{}, ErrDuplicateSlug
+	if err := pgutil.WithTx(ctx, db, nil, "begin tx", "commit tx", func(tx *sqlx.Tx) error {
+		if err := tx.QueryRowxContext(
+			ctx,
+			`INSERT INTO workspaces (name, slug)
+			 VALUES ($1, $2)
+			 RETURNING `+selectCols,
+			params.Name,
+			params.Slug,
+		).StructScan(&workspace); err != nil {
+			if pgutil.IsUniqueViolation(err) {
+				return ErrDuplicateSlug
+			}
+			return fmt.Errorf("insert workspace: %w", err)
 		}
-		return Workspace{}, fmt.Errorf("insert workspace: %w", err)
-	}
 
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`,
-		workspace.ID, params.OwnerID,
-	)
-	if err != nil {
-		return Workspace{}, fmt.Errorf("insert workspace owner: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return Workspace{}, fmt.Errorf("commit tx: %w", err)
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`,
+			workspace.ID, params.OwnerID,
+		); err != nil {
+			return fmt.Errorf("insert workspace owner: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return Workspace{}, err
 	}
 	return workspace, nil
 }
@@ -197,7 +190,3 @@ func listByUser(ctx context.Context, db *sqlx.DB, userID string) ([]Workspace, e
 	return workspaceList, nil
 }
 
-func isUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	return errors.As(err, &pqErr) && pqErr.Code == "23505"
-}

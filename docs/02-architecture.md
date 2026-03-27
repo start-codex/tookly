@@ -1,134 +1,219 @@
-# Arquitectura Técnica
+# Technical Architecture
 
-## Objetivos técnicos
+## Technical goals
 
-- Binario único fácil de desplegar.
-- Bajo consumo de memoria/CPU.
-- Mantenible y extensible por dominios.
-- UX moderna sin forzar SPA pesada.
+- Single binary, easy to deploy.
+- Low memory and CPU footprint.
+- Maintainable and extensible by domain.
+- Modern UX without a heavy SPA.
 
-## Stack
+---
 
-- Backend: Go 1.23.
-- Router HTTP: `net/http` stdlib (Go 1.22+ soporta method routing y path params nativos).
-- DB: PostgreSQL.
-- SQL layer: `database/sql` + `sqlx`.
-- Auth: sesiones con cookies seguras + OAuth opcional.
-- Migrations: golang-migrate.
+## Current stack
 
-## Estilo de aplicación
+**Backend**
 
-- Monolito modular (no microservicios en MVP).
-- API REST versionada (`/api/v1`) para integraciones.
-- Modelo Jira-like: issue centrado en proyecto/status; board como vista (filtro + columnas).
+- Go 1.26
+- HTTP router: `net/http` stdlib (Go 1.22+ supports method routing and path params natively)
+- Database: PostgreSQL
+- SQL layer: `database/sql` + `sqlx`
+- Migrations: `golang-migrate`
 
-## Estructura de directorios
+**Frontend**
+
+- SvelteKit 2 + Svelte 5
+- Vite
+- Tailwind CSS 4
+- Local shadcn-style components built on top of Bits UI primitives (no external shadcn-svelte library dependency)
+- Paraglide for i18n (EN + ES)
+
+The frontend is compiled and embedded into the Go binary at build time. The Go server serves the SvelteKit app and the API from a single process.
+
+---
+
+## Application style
+
+- Modular monolith (no microservices in MVP).
+- API REST mounted under `/api` (no version prefix in current routes).
+- Jira-like model: issue is owned by project and status; board is a view (filter + columns) over issues.
+
+---
+
+## Actual directory structure
 
 ```
 cmd/
   server/
-    main.go                   # entrypoint: configura DB, router, arranca servidor
+    main.go           # entrypoint: configures DB, router, starts server
+    middleware.go     # withRequestID, withLogger, withRecover (private to cmd)
 
 internal/
-  api/
-    router.go                 # net/http mux + middlewares globales (logger, requestID, recover)
-    issues.go                 # handlers de issues
-    projects.go               # handlers de proyectos
-    boards.go                 # handlers de tableros
-    workspaces.go             # handlers de workspaces
-    users.go                  # handlers de usuarios
+  boards/
+    boards.go         # types, errors, public API
+    handler.go        # HTTP handlers + RegisterRoutes
+    store.go          # private SQL persistence
+    boards_test.go
+    store_integration_test.go
 
   issues/
-    issues.go                 # tipos, errores y API pública
-    store.go                  # persistencia SQL privada del paquete
-    issues_test.go            # unit tests (sin DB)
+    issues.go
+    handler.go
+    store.go
+    issues_test.go
     store_integration_test.go
+
+  issuetypes/
+    issuetypes.go
+    handler.go
+    store.go
 
   projects/
     projects.go
+    handler.go
     store.go
     projects_test.go
     store_integration_test.go
 
-  boards/
-    boards.go
+  statuses/
+    statuses.go
+    handler.go
     store.go
-    boards_test.go
+
+  users/
+    users.go
+    handler.go
+    store.go
+    password.go
+    users_test.go
     store_integration_test.go
 
   workspaces/
     workspaces.go
+    handler.go
     store.go
     workspaces_test.go
     store_integration_test.go
 
-  users/
-    users.go
-    store.go
-    users_test.go
-    store_integration_test.go
+  respond/
+    respond.go        # shared HTTP utilities (respond.JSON, respond.Error, respond.Decode)
+                      # does not import any domain package
 
 migrations/
-  0001_init.up.sql
-  0001_init.down.sql
+  *.up.sql
+  *.down.sql
+
+front/
+  src/
+  package.json
+  ...
 ```
 
-## Reglas de diseño
+---
 
-- Un paquete por dominio, no por capa técnica.
-- No crear `internal/domain`, `internal/app` o `internal/store` globales.
-- No usar subdirectorios por patrón OOP (`repository/`, `service/`, `manager/`) dentro de cada dominio.
-- Dominio y persistencia conviven en el mismo paquete:
-  - `<dominio>.go`: tipos, errores, validaciones, API pública.
-  - `store.go`: SQL privado y detalles de persistencia.
-- Preferir funciones libres con dependencias explícitas (ej: `func MoveIssue(ctx, db, p)`).
-- SQL explícito y testeable con PostgreSQL real en integración.
-- Interfaces solo cuando exista una necesidad concreta (no preventivas).
+## Handler pattern
 
-Ver detalle completo en [docs/04-go-conventions.md](04-go-conventions.md).
+Handlers are thin by design: parse the request, call the domain function, write the response.
 
-## Handlers
+Each domain package exposes a single `RegisterRoutes(mux *http.ServeMux, db *sqlx.DB)` function. `cmd/server/main.go` calls them in order. All handler functions are private (`handleCreate`, not `HandleCreate`).
 
-Delgados por diseño: solo parsean el request, llaman la función de dominio y escriben la respuesta.
+Domain packages register paths **without** the `/api/` prefix. `cmd/server/main.go` mounts them on a sub-mux with `http.StripPrefix("/api", api)`, so the full public URL becomes `/api/projects/...`.
 
 ```go
-mux.HandleFunc("POST /api/v1/projects/{projectID}/issues", handleCreateIssue(db))
-mux.HandleFunc("GET /api/v1/projects/{projectID}/issues/{issueID}", handleGetIssue(db))
+func RegisterRoutes(mux *http.ServeMux, db *sqlx.DB) {
+    mux.HandleFunc("POST /projects/{projectID}/issues", handleCreateIssue(db))
+    mux.HandleFunc("GET /projects/{projectID}/issues/{issueID}", handleGetIssue(db))
+}
 
 func handleCreateIssue(db *sqlx.DB) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         projectID := r.PathValue("projectID")
         var p issues.CreateIssueParams
-        if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-            http.Error(w, err.Error(), http.StatusBadRequest)
+        if err := respond.Decode(r, &p); err != nil {
+            respond.Error(w, http.StatusBadRequest, err)
             return
         }
         p.ProjectID = projectID
         issue, err := issues.CreateIssue(r.Context(), db, p)
-        // ...
+        if err != nil {
+            fail(w, err)
+            return
+        }
+        respond.JSON(w, http.StatusCreated, issue)
     }
 }
 ```
 
-## Orden de implementación (MVP)
+Each `handler.go` defines a local `fail(w, err)` function that maps domain sentinel errors to HTTP codes. Unknown errors → 500.
 
-1. `internal/projects` — base de casi todo lo demás.
-2. `internal/workspaces` — contexto de multi-tenancy.
-3. `internal/boards` — vista del tablero.
-4. `internal/issues` CRUD — crear, leer, listar, actualizar, archivar (`MoveIssue` ya existe).
-5. `internal/users` — membresías y asignación.
-6. `internal/api` — router HTTP + handlers por dominio.
-7. Auth — sesiones con cookies.
+---
 
-## Observabilidad mínima
+## Authentication
 
-- Logs estructurados (JSON).
-- Request ID por petición (middleware).
-- Métricas básicas: latencia, errores, throughput.
+### Current state
 
-## Seguridad mínima
+- `POST /api/auth/login` exists and returns a user payload on success.
+- The frontend currently stores the returned user object in **local storage**.
+- Full cookie-based session management, a logout endpoint, and per-handler permission enforcement are **not yet implemented**.
 
-- Control de acceso por workspace/proyecto.
-- Validación de input en handler + dominio.
-- Protección CSRF en formularios.
-- Cookies `HttpOnly`, `Secure`, `SameSite`.
+### Target
+
+- Server-side sessions with secure cookies: `HttpOnly`, `Secure`, `SameSite=Strict`.
+- Session middleware validates the cookie on every request and injects the authenticated user into the context.
+- Workspace and project membership enforced per handler using the context user.
+- Logout endpoint invalidates the server-side session.
+
+---
+
+## Design rules
+
+- One package per domain, not per technical layer.
+- Do not create `internal/domain`, `internal/app`, or `internal/store` globals.
+- Do not use OOP subdirectory patterns inside a domain (`repository/`, `service/`, `manager/`).
+- Domain and persistence coexist in the same package:
+  - `<domain>.go` — types, errors, validation, public API.
+  - `store.go` — private SQL functions and persistence details.
+- Prefer free functions with explicit dependencies (e.g. `func MoveIssue(ctx, db, p)`).
+- Explicit SQL, testable against real PostgreSQL in integration tests.
+- Interfaces only when there is a concrete need (not preventive).
+
+---
+
+## Observability
+
+- Structured JSON logs.
+- Request ID per request (middleware in `cmd/server/middleware.go`).
+- Minimal metrics target: latency, error rate, throughput.
+
+---
+
+## Security
+
+- Input validation in the handler (before calling the domain function) and again inside the domain (`Validate()` as second line of defense).
+- CSRF protection for state-changing endpoints — planned as part of full session-based authentication.
+- Cookies with `HttpOnly`, `Secure`, `SameSite` — planned, pending auth completion.
+- Access control per workspace and project — planned, pending auth completion.
+
+---
+
+## Target architecture — documentation-led planning
+
+In the documentation-led planning phase (Phase 3), the architecture extends to support project documentation alongside execution:
+
+- Documentation pages belong to projects, stored in the same database.
+- Pages and work items share explicit link records — no implicit coupling.
+- Planning workflows (backlog refinement, sprint planning, reviews) reference documented context directly.
+- The initial implementation is **user-driven and manual**: users create links, not the system.
+- Automated inference from documentation is deferred to Phase 5 or later.
+
+This means no separate "wiki service" or external documentation product. Documentation is a first-class domain in the same monolith.
+
+---
+
+## Planned additions
+
+- Session middleware and server-side session store.
+- Workspace and project membership enforcement in all handlers.
+- Sprint and backlog endpoints (`internal/sprints/`).
+- Project templates API (extend `internal/projects/` or add `internal/templates/`).
+- Notification domain (`internal/notifications/`).
+- Project documentation pages domain (`internal/pages/`).

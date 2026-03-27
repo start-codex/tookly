@@ -1,56 +1,69 @@
 # Taskcore
 
-Taskcore is an open source project management platform for teams. Organize work on Kanban and Scrum-style boards, track issues, and ship faster.
+Taskcore is an open-source workflow platform for teams. Capture ideas, plan work, track execution, and follow through — regardless of your industry or methodology.
+
+Software delivery is the first deeply defined workflow: documentation, decisions, and architecture feed the backlog, roadmap, and sprints. The long-term goal is broader: any team, any domain.
 
 ## Goals
 
-- Simple enough to start in minutes, flexible enough to grow with your team.
-- Configurable per project: workflows, issue types, and boards adapt to how you work.
-- Lightweight and self-hostable, inspired by the Gitea/Forgejo approach.
+- Software-first, not software-only — built for engineering teams today, extensible to any team tomorrow.
+- Documentation and planning in one place — decisions, business rules, and architecture drive the backlog, not a separate wiki.
+- Self-hostable and open source — no vendor lock-in, no paywalled core features.
+- Simple to start, flexible to grow — works for a two-person team and scales to an organization.
 
-## Principles
+## Why Taskcore
 
-- **Open source first** — clear contribution path, modular architecture, no vendor lock-in.
-- **Project-level configuration** — each project defines its own statuses, issue types, and boards.
-- **Minimal defaults** — ships with `To Do`, `In Progress`, `Done` out of the box.
-- **Explicit over magic** — raw SQL, no ORM, no hidden layers.
+| | Taskcore | Jira + Confluence |
+|---|---|---|
+| Self-hosted | Yes | Paid / complex |
+| Docs and planning together | Yes (target) | Split products |
+| Core workflow features | All open | Many behind paywall |
+| Cross-industry templates | Planned | Available but expensive |
+| Open source | Yes | No |
+
+Jira is a useful reference for software workflows. Taskcore is not a clone — it is a workflow platform with its own identity.
+
+## Current product baseline
+
+What is shipped today:
+
+- Workspaces and projects.
+- Kanban and Scrum project templates (preconfigure statuses and one default board).
+- Boards, statuses, issue types, issues CRUD.
+- `MoveIssue` API (backend and API layer complete).
+- `POST /api/auth/login` endpoint.
+- Internationalization: English and Spanish.
+
+See [docs/05-roadmap.md](docs/05-roadmap.md) for what is in progress and planned.
 
 ## Tech stack
 
-- **Backend:** Go — monolith, `database/sql` + `sqlx`, explicit SQL queries.
-- **Frontend:** SvelteKit + shadcn-svelte.
+- **Backend:** Go 1.26 — monolith, `database/sql` + `sqlx`, explicit SQL queries.
+- **Frontend:** SvelteKit 2 + Svelte 5 + Tailwind 4 + local shadcn-style components built on top of Bits UI primitives + Paraglide i18n.
 - **Database:** PostgreSQL.
 - **Deployment:** Single Docker image, `docker compose` for local dev.
 
 ## Roadmap
 
-### Phase 1 — MVP (current)
-- Workspaces and team membership.
-- Projects with configurable statuses.
-- Boards with columns mapped to statuses.
-- Issues with title, description, status, priority, assignee, and due date.
-- Drag and drop between columns.
+See [docs/05-roadmap.md](docs/05-roadmap.md) for the full phased roadmap.
 
-### Phase 2 — Dev-centric
-- Configurable issue types per project (Epic, Story, Task, Subtask).
-- Parent/child relationships between issues.
-- Sprint planning and backlog view.
-
-### Phase 3 — Cross-industry
-- Project templates (engineering, marketing, support, operations, legal).
-- Basic automations (e.g. notify on status change).
-- Metrics and reports.
+Summary:
+- **Phase 0 — Foundation** `[shipped]` — core backend, domains, templates, i18n.
+- **Phase 1 — MVP hardening** `[in progress]` — full auth, membership enforcement, board UI, issue detail.
+- **Phase 2 — Software workflow depth** `[planned]` — issue hierarchy, sprints, backlog, planning board.
+- **Phase 3 — Documentation-led planning** `[planned]` — project pages, decision records, doc↔work item links.
+- **Phase 4 — Cross-industry templates** `[planned]` — workflow presets for HR, legal, marketing, sales, and more.
+- **Phase 5 — Automation + reporting** `[planned]` — automations, metrics, burndown, velocity tracking.
 
 ## Getting started
 
 ```bash
-# Clone and start
 git clone https://github.com/start-codex/taskcore
 cd taskcore
 docker compose up --build
-
-# App runs at http://localhost:8080
 ```
+
+App runs at `http://localhost:8080`.
 
 Create your first user:
 
@@ -58,6 +71,20 @@ Create your first user:
 curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com", "name": "Your Name", "password": "yourpassword"}'
+```
+
+## Database management
+
+The database uses a local bind mount at `.docker/postgres/`.
+
+```bash
+make db-up          # Start only the database
+make db-down        # Stop containers
+make db-reset       # Reset database (removes all data)
+make db-clean       # Remove database folder only
+make db-backup      # Create a backup of the database folder
+make db-size        # Show database folder size
+make db-shell       # Open PostgreSQL shell
 ```
 
 ## API
@@ -75,6 +102,8 @@ All responses follow the envelope format:
 - Architecture: [docs/02-architecture.md](docs/02-architecture.md)
 - Data model: [docs/03-data-model.md](docs/03-data-model.md)
 - Go conventions: [docs/04-go-conventions.md](docs/04-go-conventions.md)
+- Roadmap: [docs/05-roadmap.md](docs/05-roadmap.md)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 

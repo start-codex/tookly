@@ -74,13 +74,11 @@
 		saving = true;
 		try {
 			const workspace = await workspacesApi.create({ name: name.trim(), slug: slug.trim(), owner_id: $currentUser!.id });
-			onCreate?.(workspace);
-			onSelect(workspace);
 			sheetOpen = false;
 			resetForm();
+			onCreate?.(workspace);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to create workspace';
-		} finally {
 			saving = false;
 		}
 	}

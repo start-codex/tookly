@@ -30,11 +30,15 @@ type Project struct {
 	ArchivedAt  *time.Time `db:"archived_at"  json:"archived_at,omitempty"`
 }
 
+var validTemplates = map[string]bool{"kanban": true, "scrum": true}
+
 type CreateProjectParams struct {
 	WorkspaceID string
 	Name        string
 	Key         string
 	Description string
+	Template    string
+	Locale      string
 }
 
 func (params CreateProjectParams) Validate() error {
@@ -46,6 +50,9 @@ func (params CreateProjectParams) Validate() error {
 	}
 	if !reKey.MatchString(params.Key) {
 		return errors.New("key must be 2-10 uppercase letters (A-Z)")
+	}
+	if params.Template != "" && !validTemplates[params.Template] {
+		return errors.New("template must be 'kanban' or 'scrum'")
 	}
 	return nil
 }

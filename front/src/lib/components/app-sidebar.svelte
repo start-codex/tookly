@@ -1,81 +1,38 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import NavProjects from "./nav-projects.svelte";
-	import NavUser from "./nav-user.svelte";
-	import TeamSwitcher from "./team-switcher.svelte";
-	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-	import type { ComponentProps } from "svelte";
-	import { workspaces, projects } from '$lib/api';
-	import { currentUser } from '$lib/stores/auth';
+	import { goto } from '$app/navigation';
+	import NavProjects from './nav-projects.svelte';
+	import NavUser from './nav-user.svelte';
+	import TeamSwitcher from './team-switcher.svelte';
+	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
+	import type { ComponentProps } from 'svelte';
 	import {
-		selectWorkspace,
-		getStoredWorkspaceId,
+		selectedWorkspace,
 		workspaceProjects,
 		workspaceList,
-		markWorkspaceReady,
-		setWorkspaceList,
 		addToWorkspaceList
 	} from '$lib/stores/workspace';
 	import type { Workspace, Project } from '$lib/api';
 
 	let {
 		ref = $bindable(null),
-		collapsible = "icon",
+		collapsible = 'icon',
 		...restProps
 	}: ComponentProps<typeof Sidebar.Root> = $props();
 
 	let activeWorkspace = $state<Workspace | null>(null);
 	let projectList     = $state<Project[]>([]);
 
+	$effect(() => { activeWorkspace = $selectedWorkspace; });
 	$effect(() => { projectList = $workspaceProjects; });
 
-	async function loadProjects(workspace: Workspace): Promise<Project[]> {
-		try {
-			return (await projects.list(workspace.id)) ?? [];
-		} catch {
-			return [];
-		}
-	}
-
-	async function handleWorkspaceSelect(workspace: Workspace): Promise<void> {
-		const projs = await loadProjects(workspace);
-		selectWorkspace(workspace, projs);
-		activeWorkspace = workspace;
+	function handleWorkspaceSelect(workspace: Workspace): void {
+		goto(`/${workspace.slug}`);
 	}
 
 	function handleWorkspaceCreate(workspace: Workspace): void {
 		addToWorkspaceList(workspace);
+		goto(`/${workspace.slug}`);
 	}
-
-	onMount(async () => {
-		const user = $currentUser;
-		if (!user) {
-			markWorkspaceReady();
-			return;
-		}
-
-		let list: Workspace[] = [];
-		try {
-			list = await workspaces.listByUser(user.id);
-		} catch {
-			list = [];
-		}
-
-		setWorkspaceList(list);
-
-		if (list.length === 0) {
-			markWorkspaceReady();
-			return;
-		}
-
-		const storedId = getStoredWorkspaceId();
-		const initial = list.find(w => w.id === storedId) ?? list[0];
-		try {
-			await handleWorkspaceSelect(initial);
-		} catch {
-			markWorkspaceReady();
-		}
-	});
 </script>
 
 <Sidebar.Root {collapsible} {...restProps}>

@@ -1,20 +1,20 @@
-# Convenciones Go del proyecto
+# Go Conventions
 
-## Principio base
+## Core principle
 
-Go no es un lenguaje OOP. No trasladar patrones de Java/Spring (Repository, Service, Manager, Factory) al código. El paquete es el namespace y el identificador — no el nombre del tipo.
+Go is not an OOP language. Do not port Java/Spring patterns (Repository, Service, Manager, Factory) into the code. The package is the namespace and the identifier — not the type name.
 
 ---
 
-## Estructura de paquetes
+## Package structure
 
-Paquetes planos por dominio bajo `internal/`:
+Flat packages per domain under `internal/`:
 
 ```
 internal/
   issues/
-    issues.go               # tipos, errores, API pública
-    store.go                # persistencia SQL (privado)
+    issues.go               # types, errors, public API
+    store.go                # SQL persistence (private)
     store_integration_test.go
   projects/
     projects.go
@@ -24,107 +24,107 @@ internal/
     ...
 ```
 
-**Reglas:**
-- Un paquete por dominio, no por capa técnica
-- No crear subdirectorios dentro de un paquete de dominio (`internal/issues/repository/` está mal)
-- No crear un paquete `store` que mezcle todos los dominios
+**Rules:**
+- One package per domain, not per technical layer.
+- Do not create subdirectories inside a domain package (`internal/issues/repository/` is wrong).
+- Do not create a `store` package that mixes all domains.
 
 ---
 
-## Separación dominio / persistencia dentro del paquete
+## Domain / persistence separation within a package
 
-### `<dominio>.go` — dominio
-Contiene:
-- Tipos de dominio (`Issue`, `MoveIssueParams`, etc.)
-- Errores del dominio (`ErrIssueNotFound`)
-- Validaciones de negocio (`func (p MoveIssueParams) Validate() error`)
-- API pública del paquete (`func MoveIssue(ctx, db, p)`)
+### `<domain>.go` — domain
+Contains:
+- Domain types (`Issue`, `MoveIssueParams`, etc.)
+- Domain errors (`ErrIssueNotFound`)
+- Business validations (`func (p MoveIssueParams) Validate() error`)
+- Public package API (`func MoveIssue(ctx, db, p)`)
 
-### `store.go` — persistencia
-Contiene:
-- Funciones SQL **privadas** (`func moveIssue(ctx, db, p)`)
-- Tipos internos de mapeo (`type issuePosition struct`)
-- Constantes de implementación (`const reorderOffset`)
+### `store.go` — persistence
+Contains:
+- Private SQL functions (`func moveIssue(ctx, db, p)`)
+- Internal mapping types (`type issuePosition struct`)
+- Implementation constants (`const reorderOffset`)
 
-No contiene:
-- Validaciones de negocio
-- Tipos de dominio
-- Funciones exportadas
+Does not contain:
+- Business validations
+- Domain types
+- Exported functions
 
 ---
 
-## Funciones vs métodos
+## Functions vs methods
 
-Preferir funciones libres que reciben sus dependencias como parámetros:
+Prefer free functions that receive their dependencies as parameters:
 
 ```go
-// correcto
+// correct
 func MoveIssue(ctx context.Context, db *sqlx.DB, p MoveIssueParams) error
 
-// incorrecto — struct innecesario solo para cargar db
+// incorrect — unnecessary struct just to carry db
 type Store struct { db *sqlx.DB }
 func (s *Store) MoveIssue(ctx context.Context, p MoveIssueParams) error
 ```
 
-Usar un struct solo cuando se necesita transportar **estado mutable** entre múltiples operaciones o cuando hay más de una dependencia que se configura una sola vez (servidor HTTP, cliente externo, etc.).
+Use a struct only when you need to carry **mutable state** across multiple operations, or when there is more than one dependency that is configured once (HTTP server, external client, etc.).
 
 ---
 
-## Nombres
+## Naming
 
-| Patrón OOP (evitar) | Go idiomático |
+| OOP pattern (avoid) | Idiomatic Go |
 |---|---|
-| `NewIssueRepository(db)` | `issues.New(db)` o directamente `issues.MoveIssue(ctx, db, p)` |
-| `type IssueRepository struct` | `type Store struct` o eliminar el struct |
-| `type IssueService struct` | funciones en el paquete `issues` |
-| `IssueManager`, `IssueHandler` | funciones con nombre descriptivo |
+| `NewIssueRepository(db)` | `issues.New(db)` or directly `issues.MoveIssue(ctx, db, p)` |
+| `type IssueRepository struct` | `type Store struct` or remove the struct |
+| `type IssueService struct` | functions in the `issues` package |
+| `IssueManager`, `IssueHandler` | descriptive function names |
 
-El constructor, si existe, se llama `New`. El tipo principal del paquete refleja qué es, no el patrón que implementa.
+If a constructor exists, call it `New`. The main type of the package reflects what it is, not the pattern it implements.
 
 ---
 
 ## Interfaces
 
-Definir interfaces **solo cuando se necesitan**:
-- Al menos dos implementaciones concretas, o
-- Necesidad real de inyectar un mock en tests
+Define interfaces **only when needed**:
+- At least two concrete implementations, or
+- A real need to inject a mock in tests.
 
-No definir interfaces preventivas. En Go, las interfaces se definen del lado del consumidor, no del productor.
+Do not define preventive interfaces. In Go, interfaces are defined on the consumer side, not the producer side.
 
 ```go
-// incorrecto — interface sin consumidor real
+// incorrect — interface with no real consumer
 type IssueStorer interface {
     MoveIssue(ctx context.Context, p MoveIssueParams) error
 }
 
-// correcto — solo cuando hay necesidad concreta
+// correct — only when there is a concrete need
 ```
 
 ---
 
-## Persistencia
+## Persistence
 
-- SQL explícito: sin ORM pesado, usar `sqlx`
-- Las funciones SQL son privadas al paquete
-- La validación de inputs ocurre en el dominio antes de llegar a la persistencia
+- Explicit SQL: no heavy ORM, use `sqlx`.
+- SQL functions are private to the package.
+- Input validation happens in the domain before reaching persistence.
 
 ---
 
 ## Tests
 
-### Archivos por paquete
+### Files per package
 
 ```
 internal/issues/
-  issues_test.go              # unit tests — lógica de dominio, sin DB
-  store_integration_test.go   # integration tests — PostgreSQL real
+  issues_test.go              # unit tests — domain logic, no DB
+  store_integration_test.go   # integration tests — real PostgreSQL
 ```
 
 ### Unit tests (`issues_test.go`)
 
-- Prueban lógica de dominio pura: validaciones, reglas de negocio, tipos
-- Sin base de datos, sin dependencias externas
-- Siempre **table-driven**
+- Test pure domain logic: validations, business rules, types.
+- No database, no external dependencies.
+- Always **table-driven**.
 
 ```go
 func TestMoveIssueParams_Validate(t *testing.T) {
@@ -150,17 +150,17 @@ func TestMoveIssueParams_Validate(t *testing.T) {
 
 ### Integration tests (`store_integration_test.go`)
 
-- Prueban persistencia contra PostgreSQL real
-- Requieren `MINI_JIRA_TEST_DSN`; se saltan automáticamente si no está configurado (`t.Skip`)
-- Los tests determinísticos van en un único `TestX` **table-driven**
-- Los tests de concurrencia van como funciones separadas (goroutines y channels no encajan en table-driven)
+- Test persistence against real PostgreSQL.
+- Require `MINI_JIRA_TEST_DSN`; automatically skipped if not set (`t.Skip`).
+- Deterministic tests go in a single **table-driven** `TestX`.
+- Concurrency tests go as separate functions (goroutines and channels don't fit table-driven).
 
-#### Estructura table-driven para integración
+#### Table-driven structure for integration tests
 
 ```go
 func TestMoveIssue(t *testing.T) {
-    db := openTestDB(t)    // una sola vez por TestX
-    ensureSchema(t, db)    // una sola vez por TestX
+    db := openTestDB(t)    // once per TestX
+    ensureSchema(t, db)    // once per TestX
 
     tests := []struct {
         name    string
@@ -189,7 +189,7 @@ func TestMoveIssue(t *testing.T) {
 
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
-            seed := seedProject(t, db)  // proyecto fresco por caso, cleanup automático
+            seed := seedProject(t, db)  // fresh project per case, automatic cleanup
             p, check := tt.arrange(t, db, seed)
             err := MoveIssue(context.Background(), db, p)
             if !errors.Is(err, tt.wantErr) {
@@ -203,8 +203,8 @@ func TestMoveIssue(t *testing.T) {
 }
 ```
 
-**Claves del patrón:**
-- `arrange` retorna los parámetros de la llamada **y** un closure de assert que captura los IDs insertados
-- `seedProject` se llama dentro de cada subtest — datos aislados, limpieza via `t.Cleanup` + cascade delete
-- `db` y `ensureSchema` se crean una sola vez fuera del loop para no reconectar en cada caso
-- Si el caso solo verifica error, `check` es `nil`
+**Key points:**
+- `arrange` returns the call parameters **and** an assert closure that captures the inserted IDs.
+- `seedProject` is called inside each subtest — isolated data, cleanup via `t.Cleanup` + cascade delete.
+- `db` and `ensureSchema` are created once outside the loop to avoid reconnecting on each case.
+- If the case only checks for an error, `check` is `nil`.

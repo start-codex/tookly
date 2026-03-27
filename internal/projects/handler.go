@@ -36,6 +36,8 @@ func handleCreate(db *sqlx.DB) http.HandlerFunc {
 			Name        string `json:"name"`
 			Key         string `json:"key"`
 			Description string `json:"description"`
+			Template    string `json:"template"`
+			Locale      string `json:"locale"`
 		}
 		if err := respond.Decode(r, &body); err != nil {
 			respond.Error(w, http.StatusBadRequest, "invalid JSON")
@@ -46,6 +48,8 @@ func handleCreate(db *sqlx.DB) http.HandlerFunc {
 			Name:        body.Name,
 			Key:         body.Key,
 			Description: body.Description,
+			Template:    body.Template,
+			Locale:      body.Locale,
 		}
 		if err := params.Validate(); err != nil {
 			respond.Error(w, http.StatusUnprocessableEntity, err.Error())
