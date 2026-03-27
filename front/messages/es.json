@@ -30,6 +30,13 @@
   "project_create": "Crear proyecto",
   "project_key": "Clave",
   "project_key_hint": "Identificador corto en mayúsculas (ej. PROY)",
+  "project_template": "Plantilla",
+  "project_template_kanban": "Kanban",
+  "project_template_kanban_desc": "Flujo continuo. Columnas: Por hacer, En progreso, Hecho.",
+  "project_template_scrum": "Scrum",
+  "project_template_scrum_desc": "Basado en sprints. Columnas: Backlog, Por hacer, En progreso, En revisión, Hecho.",
+  "project_next": "Siguiente",
+  "project_back": "Atrás",
 
   "project_no_boards_title": "Sin tableros",
   "project_no_boards_desc": "Crea un tablero para empezar a organizar el trabajo en {name}.",

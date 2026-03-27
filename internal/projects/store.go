@@ -7,29 +7,109 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
+	"github.com/start-codex/taskcode/internal/pgutil"
 )
 
 const selectCols = `id, workspace_id, name, key, description, created_at, updated_at, archived_at`
 const memberCols = `project_id, user_id, role, created_at, updated_at, archived_at`
 
-func createProject(ctx context.Context, db *sqlx.DB, params CreateProjectParams) (Project, error) {
-	var project Project
-	err := db.QueryRowxContext(
-		ctx,
-		`INSERT INTO projects (workspace_id, name, key, description)
-		 VALUES ($1, $2, $3, $4)
-		 RETURNING `+selectCols,
-		params.WorkspaceID,
-		params.Name,
-		params.Key,
-		params.Description,
-	).StructScan(&project)
-	if err != nil {
-		if isUniqueViolation(err) {
-			return Project{}, ErrDuplicateProjectKey
+type templateStatus struct {
+	name     string
+	category string
+}
+
+var templateDefs = map[string]map[string][]templateStatus{
+	"en": {
+		"kanban": {
+			{"To Do", "todo"},
+			{"In Progress", "doing"},
+			{"Done", "done"},
+		},
+		"scrum": {
+			{"Backlog", "todo"},
+			{"To Do", "todo"},
+			{"In Progress", "doing"},
+			{"In Review", "doing"},
+			{"Done", "done"},
+		},
+	},
+	"es": {
+		"kanban": {
+			{"Por hacer", "todo"},
+			{"En progreso", "doing"},
+			{"Hecho", "done"},
+		},
+		"scrum": {
+			{"Backlog", "todo"},
+			{"Por hacer", "todo"},
+			{"En progreso", "doing"},
+			{"En revisión", "doing"},
+			{"Hecho", "done"},
+		},
+	},
+}
+
+func resolveTemplate(template, locale string) []templateStatus {
+	if defs, ok := templateDefs[locale]; ok {
+		if statuses, ok := defs[template]; ok {
+			return statuses
 		}
-		return Project{}, fmt.Errorf("insert project: %w", err)
+	}
+	return templateDefs["en"][template]
+}
+
+func createProject(ctx context.Context, db *sqlx.DB, params CreateProjectParams) (Project, error) {
+	if params.Template == "" {
+		var project Project
+		err := db.QueryRowxContext(
+			ctx,
+			`INSERT INTO projects (workspace_id, name, key, description)
+			 VALUES ($1, $2, $3, $4)
+			 RETURNING `+selectCols,
+			params.WorkspaceID, params.Name, params.Key, params.Description,
+		).StructScan(&project)
+		if err != nil {
+			if pgutil.IsUniqueViolation(err) {
+				return Project{}, ErrDuplicateProjectKey
+			}
+			return Project{}, fmt.Errorf("insert project: %w", err)
+		}
+		return project, nil
+	}
+
+	var project Project
+	if err := pgutil.WithTx(ctx, db, nil, "begin transaction", "commit transaction", func(tx *sqlx.Tx) error {
+		if err := tx.QueryRowxContext(
+			ctx,
+			`INSERT INTO projects (workspace_id, name, key, description)
+			 VALUES ($1, $2, $3, $4)
+			 RETURNING `+selectCols,
+			params.WorkspaceID, params.Name, params.Key, params.Description,
+		).StructScan(&project); err != nil {
+			if pgutil.IsUniqueViolation(err) {
+				return ErrDuplicateProjectKey
+			}
+			return fmt.Errorf("insert project: %w", err)
+		}
+
+		for i, s := range resolveTemplate(params.Template, params.Locale) {
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO statuses (project_id, name, category, position) VALUES ($1, $2, $3, $4)`,
+				project.ID, s.name, s.category, i,
+			); err != nil {
+				return fmt.Errorf("insert status %q: %w", s.name, err)
+			}
+		}
+
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO boards (project_id, name, type, filter_query) VALUES ($1, $2, $3, '')`,
+			project.ID, "Board", params.Template,
+		); err != nil {
+			return fmt.Errorf("insert board: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return Project{}, err
 	}
 	return project, nil
 }
@@ -162,7 +242,3 @@ func updateMemberRole(ctx context.Context, db *sqlx.DB, params UpdateMemberRoleP
 	return member, nil
 }
 
-func isUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	return errors.As(err, &pqErr) && pqErr.Code == "23505"
-}

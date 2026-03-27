@@ -3,22 +3,18 @@ package issues
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/start-codex/taskcode/internal/testpg"
 )
 
-var testDSN = os.Getenv("MINI_JIRA_TEST_DSN")
-
 func TestMoveIssue(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -135,8 +131,8 @@ func TestMoveIssue(t *testing.T) {
 }
 
 func TestMoveIssue_ConcurrentMoves(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	seed := seedProject(t, db)
 
@@ -192,8 +188,8 @@ func TestMoveIssue_ConcurrentMoves(t *testing.T) {
 }
 
 func TestMoveIssue_ConcurrentMixedMoves(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	seed := seedProject(t, db)
 
@@ -280,57 +276,6 @@ type issueSeed struct {
 type orderedIssue struct {
 	ID  string `db:"id"`
 	Pos int    `db:"status_position"`
-}
-
-func openTestDB(t *testing.T) *sqlx.DB {
-	t.Helper()
-	if testDSN == "" {
-		t.Skip("MINI_JIRA_TEST_DSN is not set; skipping PostgreSQL integration test")
-	}
-
-	db, err := sqlx.Connect("postgres", testDSN)
-	if err != nil {
-		t.Fatalf("connect test db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
-}
-
-func ensureSchema(t *testing.T, db *sqlx.DB) {
-	t.Helper()
-
-	requiredTables := []string{"workspaces", "app_users", "projects", "statuses", "issues"}
-
-	existing := 0
-	for _, table := range requiredTables {
-		var exists *string
-		if err := db.Get(&exists, `SELECT to_regclass('public.`+table+`')::text`); err != nil {
-			t.Fatalf("check table %s exists: %v", table, err)
-		}
-		if exists != nil && *exists != "" {
-			existing++
-		}
-	}
-
-	if existing == len(requiredTables) {
-		return
-	}
-	if existing > 0 {
-		t.Fatalf("partial schema detected: found %d/%d required tables", existing, len(requiredTables))
-	}
-
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-	sqlBytes, err := os.ReadFile(filepath.Join(root, "migrations", "0001_init.up.sql"))
-	if err != nil {
-		t.Fatalf("read migration: %v", err)
-	}
-	if _, err := db.Exec(string(sqlBytes)); err != nil {
-		t.Fatalf("apply migration: %v", err)
-	}
 }
 
 func seedProject(t *testing.T, db *sqlx.DB) projectSeed {
@@ -443,8 +388,8 @@ func assertContainsSameIDs(t *testing.T, got []orderedIssue, wantIDs []string) {
 }
 
 func TestCreateIssue(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -542,8 +487,8 @@ func TestCreateIssue(t *testing.T) {
 }
 
 func TestGetIssue(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -593,8 +538,8 @@ func TestGetIssue(t *testing.T) {
 }
 
 func TestListIssues(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -659,8 +604,8 @@ func TestListIssues(t *testing.T) {
 }
 
 func TestUpdateIssue(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -731,8 +676,8 @@ func TestUpdateIssue(t *testing.T) {
 }
 
 func TestArchiveIssue(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string

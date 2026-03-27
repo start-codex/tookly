@@ -3,20 +3,16 @@ package workspaces
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/start-codex/taskcode/internal/testpg"
 )
 
-var testDSN = os.Getenv("MINI_JIRA_TEST_DSN")
-
 func TestCreateWorkspace(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -26,14 +22,14 @@ func TestCreateWorkspace(t *testing.T) {
 		{
 			name: "creates workspace successfully",
 			arrange: func(t *testing.T, db *sqlx.DB) (CreateWorkspaceParams, func(*testing.T)) {
-				params := CreateWorkspaceParams{Name: "Acme Corp", Slug: uniqueSlug(t, db)}
+				params := CreateWorkspaceParams{Name: "Acme Corp", Slug: "ws-" + testpg.UniqueSuffix(t, db)}
 				return params, func(t *testing.T) {}
 			},
 		},
 		{
 			name: "returned workspace has correct fields",
 			arrange: func(t *testing.T, db *sqlx.DB) (CreateWorkspaceParams, func(*testing.T)) {
-				slug := uniqueSlug(t, db)
+				slug := "ws-" + testpg.UniqueSuffix(t, db)
 				params := CreateWorkspaceParams{Name: "Check Fields", Slug: slug}
 				return params, func(t *testing.T) {}
 			},
@@ -42,7 +38,7 @@ func TestCreateWorkspace(t *testing.T) {
 			name:    "duplicate slug",
 			wantErr: ErrDuplicateSlug,
 			arrange: func(t *testing.T, db *sqlx.DB) (CreateWorkspaceParams, func(*testing.T)) {
-				slug := uniqueSlug(t, db)
+				slug := "ws-" + testpg.UniqueSuffix(t, db)
 				if _, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "First", Slug: slug}); err != nil {
 					t.Fatalf("seed workspace: %v", err)
 				}
@@ -77,8 +73,8 @@ func TestCreateWorkspace(t *testing.T) {
 }
 
 func TestGetWorkspace(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -88,7 +84,7 @@ func TestGetWorkspace(t *testing.T) {
 		{
 			name: "returns existing workspace",
 			arrange: func(t *testing.T, db *sqlx.DB) (string, func(*testing.T)) {
-				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "Acme", Slug: uniqueSlug(t, db)})
+				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "Acme", Slug: "ws-" + testpg.UniqueSuffix(t, db)})
 				if err != nil {
 					t.Fatalf("seed workspace: %v", err)
 				}
@@ -105,7 +101,7 @@ func TestGetWorkspace(t *testing.T) {
 		{
 			name: "returns archived workspace",
 			arrange: func(t *testing.T, db *sqlx.DB) (string, func(*testing.T)) {
-				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "Old", Slug: uniqueSlug(t, db)})
+				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "Old", Slug: "ws-" + testpg.UniqueSuffix(t, db)})
 				if err != nil {
 					t.Fatalf("seed workspace: %v", err)
 				}
@@ -135,8 +131,8 @@ func TestGetWorkspace(t *testing.T) {
 }
 
 func TestGetWorkspaceBySlug(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -146,7 +142,7 @@ func TestGetWorkspaceBySlug(t *testing.T) {
 		{
 			name: "returns workspace by slug",
 			arrange: func(t *testing.T, db *sqlx.DB) (string, func(*testing.T)) {
-				slug := uniqueSlug(t, db)
+				slug := "ws-" + testpg.UniqueSuffix(t, db)
 				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "Acme", Slug: slug})
 				if err != nil {
 					t.Fatalf("seed workspace: %v", err)
@@ -185,8 +181,8 @@ func TestGetWorkspaceBySlug(t *testing.T) {
 }
 
 func TestArchiveWorkspace(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -196,7 +192,7 @@ func TestArchiveWorkspace(t *testing.T) {
 		{
 			name: "archives active workspace",
 			arrange: func(t *testing.T, db *sqlx.DB) string {
-				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "Acme", Slug: uniqueSlug(t, db)})
+				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "Acme", Slug: "ws-" + testpg.UniqueSuffix(t, db)})
 				if err != nil {
 					t.Fatalf("seed workspace: %v", err)
 				}
@@ -214,7 +210,7 @@ func TestArchiveWorkspace(t *testing.T) {
 			name:    "already archived",
 			wantErr: ErrWorkspaceNotFound,
 			arrange: func(t *testing.T, db *sqlx.DB) string {
-				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "Old", Slug: uniqueSlug(t, db)})
+				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "Old", Slug: "ws-" + testpg.UniqueSuffix(t, db)})
 				if err != nil {
 					t.Fatalf("seed workspace: %v", err)
 				}
@@ -246,87 +242,9 @@ func TestArchiveWorkspace(t *testing.T) {
 	}
 }
 
-func openTestDB(t *testing.T) *sqlx.DB {
-	t.Helper()
-	if testDSN == "" {
-		t.Skip("MINI_JIRA_TEST_DSN is not set; skipping PostgreSQL integration test")
-	}
-	db, err := sqlx.Connect("postgres", testDSN)
-	if err != nil {
-		t.Fatalf("connect test db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
-}
-
-func ensureSchema(t *testing.T, db *sqlx.DB) {
-	t.Helper()
-
-	requiredTables := []string{"workspaces", "app_users", "projects", "statuses", "issues"}
-
-	existing := 0
-	for _, table := range requiredTables {
-		var exists *string
-		if err := db.Get(&exists, `SELECT to_regclass('public.`+table+`')::text`); err != nil {
-			t.Fatalf("check table %s exists: %v", table, err)
-		}
-		if exists != nil && *exists != "" {
-			existing++
-		}
-	}
-
-	if existing == len(requiredTables) {
-		return
-	}
-	if existing > 0 {
-		t.Fatalf("partial schema detected: found %d/%d required tables", existing, len(requiredTables))
-	}
-
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-	sqlBytes, err := os.ReadFile(filepath.Join(root, "migrations", "0001_init.up.sql"))
-	if err != nil {
-		t.Fatalf("read migration: %v", err)
-	}
-	if _, err := db.Exec(string(sqlBytes)); err != nil {
-		t.Fatalf("apply migration: %v", err)
-	}
-}
-
-// uniqueSlug genera un slug único usando gen_random_uuid() de PostgreSQL.
-// Registra limpieza del workspace creado vía ON DELETE CASCADE desde workspaces.
-func uniqueSlug(t *testing.T, db *sqlx.DB) string {
-	t.Helper()
-	var slug string
-	if err := db.GetContext(context.Background(), &slug,
-		`SELECT 'ws-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)`,
-	); err != nil {
-		t.Fatalf("generate unique slug: %v", err)
-	}
-	return slug
-}
-
-func seedUser(t *testing.T, db *sqlx.DB) string {
-	t.Helper()
-	var id string
-	if err := db.GetContext(context.Background(), &id,
-		`INSERT INTO app_users (email, name, password_hash)
-		 VALUES (gen_random_uuid()::text || '@test.local', 'Test', '') RETURNING id`,
-	); err != nil {
-		t.Fatalf("seed user: %v", err)
-	}
-	t.Cleanup(func() {
-		db.ExecContext(context.Background(), `DELETE FROM app_users WHERE id = $1`, id)
-	})
-	return id
-}
-
 func TestWorkspaceMembers(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -336,11 +254,11 @@ func TestWorkspaceMembers(t *testing.T) {
 		{
 			name: "add and list member",
 			arrange: func(t *testing.T, db *sqlx.DB) func(*testing.T) {
-				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "WS", Slug: uniqueSlug(t, db)})
+				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "WS", Slug: "ws-" + testpg.UniqueSuffix(t, db)})
 				if err != nil {
 					t.Fatalf("seed workspace: %v", err)
 				}
-				uID := seedUser(t, db)
+				uID := testpg.SeedUser(t, db)
 				if _, err := AddMember(context.Background(), db, AddMemberParams{WorkspaceID: ws.ID, UserID: uID, Role: "member"}); err != nil {
 					t.Fatalf("add member: %v", err)
 				}
@@ -358,11 +276,11 @@ func TestWorkspaceMembers(t *testing.T) {
 		{
 			name: "add same member twice updates role",
 			arrange: func(t *testing.T, db *sqlx.DB) func(*testing.T) {
-				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "WS", Slug: uniqueSlug(t, db)})
+				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "WS", Slug: "ws-" + testpg.UniqueSuffix(t, db)})
 				if err != nil {
 					t.Fatalf("seed workspace: %v", err)
 				}
-				uID := seedUser(t, db)
+				uID := testpg.SeedUser(t, db)
 				if _, err := AddMember(context.Background(), db, AddMemberParams{WorkspaceID: ws.ID, UserID: uID, Role: "member"}); err != nil {
 					t.Fatalf("first add: %v", err)
 				}
@@ -383,11 +301,11 @@ func TestWorkspaceMembers(t *testing.T) {
 		{
 			name: "remove member excludes from list",
 			arrange: func(t *testing.T, db *sqlx.DB) func(*testing.T) {
-				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "WS", Slug: uniqueSlug(t, db)})
+				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "WS", Slug: "ws-" + testpg.UniqueSuffix(t, db)})
 				if err != nil {
 					t.Fatalf("seed workspace: %v", err)
 				}
-				uID := seedUser(t, db)
+				uID := testpg.SeedUser(t, db)
 				if _, err := AddMember(context.Background(), db, AddMemberParams{WorkspaceID: ws.ID, UserID: uID, Role: "member"}); err != nil {
 					t.Fatalf("add: %v", err)
 				}
@@ -408,11 +326,11 @@ func TestWorkspaceMembers(t *testing.T) {
 		{
 			name: "update member role",
 			arrange: func(t *testing.T, db *sqlx.DB) func(*testing.T) {
-				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "WS", Slug: uniqueSlug(t, db)})
+				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "WS", Slug: "ws-" + testpg.UniqueSuffix(t, db)})
 				if err != nil {
 					t.Fatalf("seed workspace: %v", err)
 				}
-				uID := seedUser(t, db)
+				uID := testpg.SeedUser(t, db)
 				if _, err := AddMember(context.Background(), db, AddMemberParams{WorkspaceID: ws.ID, UserID: uID, Role: "member"}); err != nil {
 					t.Fatalf("add: %v", err)
 				}
@@ -431,7 +349,7 @@ func TestWorkspaceMembers(t *testing.T) {
 			name:    "remove non-existent member",
 			wantErr: ErrMemberNotFound,
 			arrange: func(t *testing.T, db *sqlx.DB) func(*testing.T) {
-				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "WS", Slug: uniqueSlug(t, db)})
+				ws, err := CreateWorkspace(context.Background(), db, CreateWorkspaceParams{Name: "WS", Slug: "ws-" + testpg.UniqueSuffix(t, db)})
 				if err != nil {
 					t.Fatalf("seed workspace: %v", err)
 				}

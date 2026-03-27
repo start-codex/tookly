@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/start-codex/taskcode/internal/pgutil"
 )
 
 const reorderOffset = 1000000
@@ -16,56 +17,50 @@ const issueCols = `id, project_id, number, issue_type_id, status_id, parent_issu
 	status_position, created_at, updated_at, archived_at`
 
 func createIssue(ctx context.Context, db *sqlx.DB, params CreateIssueParams) (Issue, error) {
-	tx, err := db.BeginTxx(ctx, nil)
-	if err != nil {
-		return Issue{}, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	var number int
-	if err := tx.QueryRowxContext(ctx,
-		`INSERT INTO project_issue_counters (project_id, last_number)
-		 VALUES ($1, 1)
-		 ON CONFLICT (project_id)
-		 DO UPDATE SET last_number = project_issue_counters.last_number + 1
-		 RETURNING last_number`,
-		params.ProjectID,
-	).Scan(&number); err != nil {
-		return Issue{}, fmt.Errorf("upsert issue counter: %w", err)
-	}
-
-	var parentIssueID *string
-	if params.ParentIssueID != "" {
-		parentIssueID = &params.ParentIssueID
-	}
-	var assigneeID *string
-	if params.AssigneeID != "" {
-		assigneeID = &params.AssigneeID
-	}
-
 	var issue Issue
-	err = tx.QueryRowxContext(ctx,
-		`INSERT INTO issues (
-			project_id, number, issue_type_id, status_id, parent_issue_id,
-			title, description, priority, assignee_id, reporter_id, due_date,
-			status_position
-		) VALUES (
-			$1, $2, $3, $4, $5,
-			$6, $7, $8, $9, $10, $11,
-			(SELECT COALESCE(MAX(status_position), -1) + 1
-			 FROM issues
-			 WHERE project_id = $1 AND status_id = $4 AND archived_at IS NULL)
-		)
-		RETURNING `+issueCols,
-		params.ProjectID, number, params.IssueTypeID, params.StatusID, parentIssueID,
-		params.Title, params.Description, params.Priority, assigneeID, params.ReporterID, params.DueDate,
-	).StructScan(&issue)
-	if err != nil {
-		return Issue{}, fmt.Errorf("insert issue: %w", err)
-	}
+	if err := pgutil.WithTx(ctx, db, nil, "begin tx", "commit create issue", func(tx *sqlx.Tx) error {
+		var number int
+		if err := tx.QueryRowxContext(ctx,
+			`INSERT INTO project_issue_counters (project_id, last_number)
+			 VALUES ($1, 1)
+			 ON CONFLICT (project_id)
+			 DO UPDATE SET last_number = project_issue_counters.last_number + 1
+			 RETURNING last_number`,
+			params.ProjectID,
+		).Scan(&number); err != nil {
+			return fmt.Errorf("upsert issue counter: %w", err)
+		}
 
-	if err := tx.Commit(); err != nil {
-		return Issue{}, fmt.Errorf("commit create issue: %w", err)
+		var parentIssueID *string
+		if params.ParentIssueID != "" {
+			parentIssueID = &params.ParentIssueID
+		}
+		var assigneeID *string
+		if params.AssigneeID != "" {
+			assigneeID = &params.AssigneeID
+		}
+
+		if err := tx.QueryRowxContext(ctx,
+			`INSERT INTO issues (
+				project_id, number, issue_type_id, status_id, parent_issue_id,
+				title, description, priority, assignee_id, reporter_id, due_date,
+				status_position
+			) VALUES (
+				$1, $2, $3, $4, $5,
+				$6, $7, $8, $9, $10, $11,
+				(SELECT COALESCE(MAX(status_position), -1) + 1
+				 FROM issues
+				 WHERE project_id = $1 AND status_id = $4 AND archived_at IS NULL)
+			)
+			RETURNING `+issueCols,
+			params.ProjectID, number, params.IssueTypeID, params.StatusID, parentIssueID,
+			params.Title, params.Description, params.Priority, assigneeID, params.ReporterID, params.DueDate,
+		).StructScan(&issue); err != nil {
+			return fmt.Errorf("insert issue: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return Issue{}, err
 	}
 	return issue, nil
 }

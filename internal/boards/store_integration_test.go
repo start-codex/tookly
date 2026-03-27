@@ -3,20 +3,16 @@ package boards
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/start-codex/taskcode/internal/testpg"
 )
 
-var testDSN = os.Getenv("MINI_JIRA_TEST_DSN")
-
 func TestCreateBoard(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -53,9 +49,9 @@ func TestCreateBoard(t *testing.T) {
 		{
 			name: "same name in different projects is allowed",
 			arrange: func(t *testing.T, db *sqlx.DB) (CreateBoardParams, func(*testing.T)) {
-				ws := seedWorkspace(t, db)
-				proj1 := seedProjectInWorkspace(t, db, ws, "PRJ")
-				proj2 := seedProjectInWorkspace(t, db, ws, "OTH")
+				ws := testpg.SeedWorkspace(t, db)
+				proj1 := testpg.SeedProject(t, db, ws, "PRJ")
+				proj2 := testpg.SeedProject(t, db, ws, "OTH")
 				if _, err := CreateBoard(context.Background(), db, CreateBoardParams{ProjectID: proj1, Name: "Board", Type: "kanban"}); err != nil {
 					t.Fatalf("seed board proj1: %v", err)
 				}
@@ -90,8 +86,8 @@ func TestCreateBoard(t *testing.T) {
 }
 
 func TestGetBoard(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -136,8 +132,8 @@ func TestGetBoard(t *testing.T) {
 }
 
 func TestListBoards(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -197,8 +193,8 @@ func TestListBoards(t *testing.T) {
 }
 
 func TestAddColumn(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -271,8 +267,8 @@ func TestAddColumn(t *testing.T) {
 }
 
 func TestAssignUnassignStatus(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -334,8 +330,8 @@ func TestAssignUnassignStatus(t *testing.T) {
 }
 
 func TestArchiveColumn(t *testing.T) {
-	db := openTestDB(t)
-	ensureSchema(t, db)
+	db := testpg.Open(t)
+	testpg.EnsureMigrated(t, db)
 
 	tests := []struct {
 		name    string
@@ -390,88 +386,10 @@ func TestArchiveColumn(t *testing.T) {
 
 // --- helpers ---
 
-func openTestDB(t *testing.T) *sqlx.DB {
-	t.Helper()
-	if testDSN == "" {
-		t.Skip("MINI_JIRA_TEST_DSN is not set; skipping PostgreSQL integration test")
-	}
-	db, err := sqlx.Connect("postgres", testDSN)
-	if err != nil {
-		t.Fatalf("connect test db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
-}
-
-func ensureSchema(t *testing.T, db *sqlx.DB) {
-	t.Helper()
-
-	requiredTables := []string{"workspaces", "app_users", "projects", "statuses", "issues"}
-
-	existing := 0
-	for _, table := range requiredTables {
-		var exists *string
-		if err := db.Get(&exists, `SELECT to_regclass('public.`+table+`')::text`); err != nil {
-			t.Fatalf("check table %s exists: %v", table, err)
-		}
-		if exists != nil && *exists != "" {
-			existing++
-		}
-	}
-
-	if existing == len(requiredTables) {
-		return
-	}
-	if existing > 0 {
-		t.Fatalf("partial schema detected: found %d/%d required tables", existing, len(requiredTables))
-	}
-
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-	sqlBytes, err := os.ReadFile(filepath.Join(root, "migrations", "0001_init.up.sql"))
-	if err != nil {
-		t.Fatalf("read migration: %v", err)
-	}
-	if _, err := db.Exec(string(sqlBytes)); err != nil {
-		t.Fatalf("apply migration: %v", err)
-	}
-}
-
-func seedWorkspace(t *testing.T, db *sqlx.DB) string {
-	t.Helper()
-	var id string
-	if err := db.GetContext(context.Background(), &id,
-		`INSERT INTO workspaces (name, slug) VALUES ('ws', gen_random_uuid()::text) RETURNING id`,
-	); err != nil {
-		t.Fatalf("seed workspace: %v", err)
-	}
-	t.Cleanup(func() {
-		if _, err := db.ExecContext(context.Background(), `DELETE FROM workspaces WHERE id = $1`, id); err != nil {
-			t.Fatalf("cleanup workspace: %v", err)
-		}
-	})
-	return id
-}
-
-func seedProjectInWorkspace(t *testing.T, db *sqlx.DB, workspaceID, key string) string {
-	t.Helper()
-	var id string
-	if err := db.GetContext(context.Background(), &id,
-		`INSERT INTO projects (workspace_id, name, key, description) VALUES ($1, $2, $3, '') RETURNING id`,
-		workspaceID, key, key,
-	); err != nil {
-		t.Fatalf("seed project: %v", err)
-	}
-	return id
-}
-
 func seedProject(t *testing.T, db *sqlx.DB) string {
 	t.Helper()
-	ws := seedWorkspace(t, db)
-	return seedProjectInWorkspace(t, db, ws, "BRD")
+	ws := testpg.SeedWorkspace(t, db)
+	return testpg.SeedProject(t, db, ws, "BRD")
 }
 
 func seedBoard(t *testing.T, db *sqlx.DB) string {

@@ -8,4 +8,7 @@ front/.idea
 # macOS
 .DS_Store
 
+# Docker data directories
+.docker/
+
 
